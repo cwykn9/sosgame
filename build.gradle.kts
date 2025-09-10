@@ -1,25 +1,29 @@
 plugins {
     application
-    id("org.openjfx.javafxplugin") version "0.1.0"
+    java
+    id("org.openjfx.javafxplugin") version "0.0.14"
 }
 
-repositories {
-    mavenCentral()
+java {
+    toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
 }
+
+repositories { mavenCentral() }
 
 dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+}
+
+application {
+
+    mainClass.set("cs449.MainApp")
 }
 
 javafx {
     version = "22.0.2"
-    modules = listOf("javafx.controls", "javafx.graphics")
+    modules("javafx.base", "javafx.graphics", "javafx.controls")
 }
 
-tasks.test {
-    useJUnitPlatform()
-}
-
-application {
-    mainClass.set("cs449.MainApp")
-}
+tasks.test { useJUnitPlatform() }
