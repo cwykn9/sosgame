@@ -5,20 +5,25 @@ plugins {
 }
 
 java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
 }
 
-repositories { mavenCentral() }
+repositories {
+    mavenCentral()
+}
 
 dependencies {
-
-    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    // JUnit 5 (latest BOM + Jupiter)
+    testImplementation(platform("org.junit:junit-bom:5.10.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
 }
 
 application {
-
     mainClass.set("cs449.MainApp")
+    // If you ever hit odd JavaFX CSS/module issues when running via Gradle, uncomment:
+    // applicationDefaultJvmArgs = listOf("--add-opens=javafx.graphics/com.sun.javafx.css=ALL-UNNAMED")
 }
 
 javafx {
@@ -26,4 +31,6 @@ javafx {
     modules("javafx.base", "javafx.graphics", "javafx.controls")
 }
 
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+}

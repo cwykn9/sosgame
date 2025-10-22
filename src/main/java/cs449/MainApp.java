@@ -1,54 +1,125 @@
 package cs449;
 
+import cs449.model.*;
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.Label;
-import javafx.scene.control.RadioButton;
-import javafx.scene.control.ToggleGroup;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
 public class MainApp extends Application {
+
+    private SosGame game;
+    private Button[][] cells;
+
+    private final ToggleGroup letterGroup = new ToggleGroup(); // S / O
+    private final ToggleGroup modeGroup   = new ToggleGroup(); // Simple / General
+    private final ComboBox<Integer> sizeBox = new ComboBox<>(); // 3..10
+    private final Label status = new Label();
+
     @Override
     public void start(Stage stage) {
-        Label title = new Label("Hello, SOS!");
-        title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
+        // --- Controls (top bar) ---
+        sizeBox.getItems().addAll(3,4,5,6,7,8,9,10);
+        sizeBox.getSelectionModel().select(Integer.valueOf(3));
 
+        RadioButton simple  = new RadioButton("Simple");
+        RadioButton general = new RadioButton("General");
+        simple.setToggleGroup(modeGroup);
+        general.setToggleGroup(modeGroup);
+        simple.setSelected(true); // default
 
-        Canvas canvas = new Canvas(360, 200);
-        GraphicsContext g = canvas.getGraphicsContext2D();
-        g.setLineWidth(2);
-        g.strokeLine(40, 40, 320, 180);
-        g.strokeLine(40, 180, 320, 40);
+        Button newGameBtn = new Button("New Game");
+        newGameBtn.setOnAction(e -> startNewGame());
 
+        RadioButton sBtn = new RadioButton("S");
+        RadioButton oBtn = new RadioButton("O");
+        sBtn.setToggleGroup(letterGroup);
+        oBtn.setToggleGroup(letterGroup);
+        sBtn.setSelected(true); // default
 
-        CheckBox enable = new CheckBox("Check Box");
-        RadioButton r1 = new RadioButton("Option 1");
-        RadioButton r2 = new RadioButton("Option 2");
-        ToggleGroup tg = new ToggleGroup();
-        r1.setToggleGroup(tg); r2.setToggleGroup(tg);
-        r1.setDisable(true); r2.setDisable(true);
-        enable.selectedProperty().addListener((obs, was, on) -> {
-            r1.setDisable(!on); r2.setDisable(!on);
-        });
+        HBox top = new HBox(
+                12,
+                new Label("Board:"), sizeBox,
+                new Label("Mode:"), simple, general,
+                newGameBtn,
+                new Label("Letter:"), sBtn, oBtn
+        );
+        top.setPadding(new Insets(10));
 
-        HBox controls = new HBox(12, enable, r1, r2);
-        controls.setPadding(new Insets(8));
+        // --- Board area (center) ---
+        GridPane grid = new GridPane();
+        grid.setHgap(3);
+        grid.setVgap(3);
+        grid.setPadding(new Insets(10));
 
-        VBox root = new VBox(12, title, canvas, controls);
-        root.setPadding(new Insets(12));
+        // --- Status (bottom) ---
+        status.setPadding(new Insets(10));
 
-        stage.setTitle("Sprint 0 Test");
-        stage.setScene(new Scene(root, 400, 300));
+        VBox root = new VBox(top, grid, status);
+
+        stage.setTitle("SOS — Sprint 2");
+        stage.setScene(new Scene(root));
         stage.show();
+
+        // First game
+        startNewGame();
+    }
+
+    // Starts (or restarts) a game using UI selections
+    private void startNewGame() {
+        Integer val = sizeBox.getValue();
+        int n = (val == null ? 3 : val);
+
+        // Safe read of mode toggle
+        Toggle t = modeGroup.getSelectedToggle();
+        GameMode mode = (t instanceof RadioButton rb && "General".equalsIgnoreCase(rb.getText()))
+                ? GameMode.GENERAL : GameMode.SIMPLE;
+
+        if (game == null) game = new SosGame(n, mode);
+        else game.newGame(n, mode);
+
+        buildBoardUI(n);
+        updateStatus();
+    }
+
+    // Rebuild the board buttons and wire them to game.place(...)
+    private void buildBoardUI(int n) {
+        GridPane grid = (GridPane) ((VBox) status.getParent()).getChildren().get(1);
+        grid.getChildren().clear();
+
+        cells = new Button[n][n];
+        for (int r = 0; r < n; r++) {
+            for (int c = 0; c < n; c++) {
+                Button b = new Button(" ");
+                b.setMinSize(40, 40);
+
+                final int rr = r, cc = c;
+                b.setOnAction(e -> {
+                    // Safe read of letter toggle
+                    Toggle t = letterGroup.getSelectedToggle();
+                    Letter L = (t instanceof RadioButton rb && "S".equals(rb.getText()))
+                            ? Letter.S : Letter.O;
+
+                    if (game.place(rr, cc, L)) {
+                        b.setText(L == Letter.S ? "S" : "O");
+                        updateStatus();
+                    }
+                });
+
+                cells[r][c] = b;
+                grid.add(b, c, r);
+            }
+        }
+    }
+
+    private void updateStatus() {
+        status.setText("Current turn: " + game.turn().name().toLowerCase());
     }
 
     public static void main(String[] args) {
         launch(args);
     }
 }
+
