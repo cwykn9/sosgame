@@ -28,7 +28,7 @@ public class Sprint2Tests {
     void cannotOverwriteCell() {
         var g = new SosGame(3, GameMode.GENERAL);
         assertTrue(g.place(1, 1, Letter.O));
-        assertFalse(g.place(1, 1, Letter.S)); // blocked
+        assertFalse(g.place(1, 1, Letter.S));
         assertEquals(Letter.O, g.board().get(1, 1));
     }
 
