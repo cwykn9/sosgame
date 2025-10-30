@@ -35,8 +35,8 @@ public class Sprint2Tests {
     @Test
     void newGame_appliesSizeAndMode_andResetsTurn() {
         var g = new SosGame(5, GameMode.GENERAL);
-        g.place(0, 0, Letter.S);            // make some moves first
-        g.newGame(3, GameMode.SIMPLE);      // then start a new game
+        g.place(0, 0, Letter.S);
+        g.newGame(3, GameMode.SIMPLE);
         assertEquals(3, g.board().size());
         assertEquals(GameMode.SIMPLE, g.mode());
         assertEquals(Player.BLUE, g.turn());
