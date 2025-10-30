@@ -10,3 +10,5 @@ public class SosGame {
     }
     public void newGame(int n, GameMode mode){ this.board=new Board(n); this.mode=mode; this.turn=Player.BLUE; }
 }
+
+

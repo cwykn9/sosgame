@@ -13,14 +13,14 @@ public class MainApp extends Application {
     private SosGame game;
     private Button[][] cells;
 
-    private final ToggleGroup letterGroup = new ToggleGroup(); // S / O
-    private final ToggleGroup modeGroup   = new ToggleGroup(); // Simple / General
-    private final ComboBox<Integer> sizeBox = new ComboBox<>(); // 3..10
+    private final ToggleGroup letterGroup = new ToggleGroup();
+    private final ToggleGroup modeGroup   = new ToggleGroup();
+    private final ComboBox<Integer> sizeBox = new ComboBox<>();
     private final Label status = new Label();
 
     @Override
     public void start(Stage stage) {
-        // --- Controls (top bar) ---
+
         sizeBox.getItems().addAll(3,4,5,6,7,8,9,10);
         sizeBox.getSelectionModel().select(Integer.valueOf(3));
 
@@ -48,13 +48,13 @@ public class MainApp extends Application {
         );
         top.setPadding(new Insets(10));
 
-        // --- Board area (center) ---
+
         GridPane grid = new GridPane();
         grid.setHgap(3);
         grid.setVgap(3);
         grid.setPadding(new Insets(10));
 
-        // --- Status (bottom) ---
+
         status.setPadding(new Insets(10));
 
         VBox root = new VBox(top, grid, status);
@@ -63,16 +63,16 @@ public class MainApp extends Application {
         stage.setScene(new Scene(root));
         stage.show();
 
-        // First game
+
         startNewGame();
     }
 
-    // Starts (or restarts) a game using UI selections
+
     private void startNewGame() {
         Integer val = sizeBox.getValue();
         int n = (val == null ? 3 : val);
 
-        // Safe read of mode toggle
+
         Toggle t = modeGroup.getSelectedToggle();
         GameMode mode = (t instanceof RadioButton rb && "General".equalsIgnoreCase(rb.getText()))
                 ? GameMode.GENERAL : GameMode.SIMPLE;
@@ -84,7 +84,7 @@ public class MainApp extends Application {
         updateStatus();
     }
 
-    // Rebuild the board buttons and wire them to game.place(...)
+
     private void buildBoardUI(int n) {
         GridPane grid = (GridPane) ((VBox) status.getParent()).getChildren().get(1);
         grid.getChildren().clear();
@@ -97,7 +97,7 @@ public class MainApp extends Application {
 
                 final int rr = r, cc = c;
                 b.setOnAction(e -> {
-                    // Safe read of letter toggle
+
                     Toggle t = letterGroup.getSelectedToggle();
                     Letter L = (t instanceof RadioButton rb && "S".equals(rb.getText()))
                             ? Letter.S : Letter.O;
