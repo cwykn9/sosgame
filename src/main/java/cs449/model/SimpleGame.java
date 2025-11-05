@@ -1,5 +1,6 @@
 package cs449.model;
 
+
 public class SimpleGame extends SosGame {
 
     public SimpleGame(int n) {

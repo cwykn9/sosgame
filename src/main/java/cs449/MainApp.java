@@ -12,31 +12,34 @@ import javafx.stage.Stage;
 
 public class MainApp extends Application {
 
-
-    private final ToggleGroup modeGroup = new ToggleGroup();
-    private final ToggleGroup letterGroup = new ToggleGroup();
-    private final ComboBox<Integer> sizeBox = new ComboBox<>();
+    private final ToggleGroup modeGroup = new ToggleGroup();     // Simple / General
+    private final ToggleGroup letterGroup = new ToggleGroup();   // S / O
+    private final ComboBox<Integer> sizeBox = new ComboBox<>();  // board sizes
     private final Label status = new Label();
     private GridPane grid;
-
 
     private SosGame game;
     private Button[][] cells;
 
     @Override
     public void start(Stage stage) {
+        // ---------- Top controls ----------
         sizeBox.getItems().addAll(3, 4, 5, 6, 7, 8, 9, 10);
         sizeBox.getSelectionModel().select(Integer.valueOf(3));
 
+        // Mode radios with enum userData (avoid fragile .getText() checks)
         RadioButton simple = new RadioButton("Simple");
         RadioButton general = new RadioButton("General");
         simple.setToggleGroup(modeGroup);
         general.setToggleGroup(modeGroup);
-        general.setSelected(true); // default to General
+        simple.setUserData(GameMode.SIMPLE);
+        general.setUserData(GameMode.GENERAL);
+        general.setSelected(true); // default if you want
 
         Button newGameBtn = new Button("New Game");
         newGameBtn.setOnAction(e -> startNewGame());
 
+        // Letter radios
         RadioButton sBtn = new RadioButton("S");
         RadioButton oBtn = new RadioButton("O");
         sBtn.setToggleGroup(letterGroup);
@@ -51,39 +54,40 @@ public class MainApp extends Application {
         );
         top.setPadding(new Insets(10));
 
-
+        // ---------- Board Grid ----------
         grid = new GridPane();
         grid.setHgap(4);
         grid.setVgap(4);
         grid.setPadding(new Insets(10));
 
-
+        // ---------- Status line ----------
         status.setPadding(new Insets(10));
 
-
+        // ---------- Layout ----------
         VBox root = new VBox(top, grid, status);
         Scene scene = new Scene(root);
         stage.setTitle("SOS — Sprint 3");
         stage.setScene(scene);
         stage.show();
 
-
+        // ---------- Initialize game ----------
         startNewGame();
     }
 
-
+    /** Create a new game and rebuild board */
     private void startNewGame() {
         int n = sizeBox.getValue() == null ? 3 : sizeBox.getValue();
-        boolean isGeneral = isGeneralSelected();
+        GameMode selectedMode = getSelectedMode();
 
-        game = isGeneral ? new GeneralGame(n) : new SimpleGame(n);
+        // Construct correct subclass based on enum (no text comparisons)
+        game = (selectedMode == GameMode.GENERAL) ? new GeneralGame(n) : new SimpleGame(n);
 
         buildBoardUI(n);
         updateBoardFromModel();
         updateStatus();
     }
 
-
+    /** Build the visual board grid */
     private void buildBoardUI(int n) {
         grid.getChildren().clear();
         cells = new Button[n][n];
@@ -101,7 +105,7 @@ public class MainApp extends Application {
         }
     }
 
-
+    /** Handle player move */
     private void handleMove(int r, int c, Button b) {
         if (game.isOver()) return;
         Letter L = getSelectedLetter();
@@ -109,11 +113,11 @@ public class MainApp extends Application {
         if (game.place(r, c, L)) {
             b.setText(L == Letter.S ? "S" : "O");
             updateStatus();
-
             if (game.isOver()) disableEmptyCells();
         }
     }
 
+    // ---------- Helpers ----------
 
     private void updateBoardFromModel() {
         int n = game.board().size();
@@ -126,16 +130,17 @@ public class MainApp extends Application {
         }
     }
 
-    private boolean isGeneralSelected() {
-        var t = modeGroup.getSelectedToggle();
-        if (t instanceof RadioButton rb) {
-            return "General".equalsIgnoreCase(rb.getText());
+    private GameMode getSelectedMode() {
+        Toggle t = modeGroup.getSelectedToggle();
+        if (t != null && t.getUserData() instanceof GameMode gm) {
+            return gm;
         }
-        return false;
+        // Fallback: default to SIMPLE if somehow nothing selected
+        return GameMode.SIMPLE;
     }
 
     private Letter getSelectedLetter() {
-        var t = letterGroup.getSelectedToggle();
+        Toggle t = letterGroup.getSelectedToggle();
         if (t instanceof RadioButton rb) {
             return "O".equalsIgnoreCase(rb.getText()) ? Letter.O : Letter.S;
         }
@@ -160,24 +165,24 @@ public class MainApp extends Application {
         }
     }
 
-
+    /** Update status bar text */
     private void updateStatus() {
+        String modeStr = "Mode: " + game.mode().name().toLowerCase();
         if (game.isOver()) {
             Player w = game.winner();
             String score = (game.mode() == GameMode.GENERAL)
-                    ? String.format("  |  Blue: %d  Red: %d", game.blueScore(), game.redScore())
+                    ? String.format(" | Blue: %d  Red: %d", game.blueScore(), game.redScore())
                     : "";
-
             if (w == null) {
-                status.setText("Game over: Draw" + score);
+                status.setText("Game over: Draw  |  " + modeStr + score);
             } else {
-                status.setText("Game over: Winner = " + w.name().toLowerCase() + score);
+                status.setText("Game over: Winner = " + w.name().toLowerCase() + "  |  " + modeStr + score);
             }
         } else {
             String score = (game.mode() == GameMode.GENERAL)
-                    ? String.format("  |  Blue: %d  Red: %d", game.blueScore(), game.redScore())
+                    ? String.format(" | Blue: %d  Red: %d", game.blueScore(), game.redScore())
                     : "";
-            status.setText("Current turn: " + game.turn().name().toLowerCase() + score);
+            status.setText("Current turn: " + game.turn().name().toLowerCase() + "  |  " + modeStr + score);
         }
     }
 
