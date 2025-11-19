@@ -28,15 +28,13 @@ public class MainApp extends Application {
 
         @Override
         public String toString() {
-            // What appears in the ComboBox
             return this == HUMAN ? "Human" : "Computer";
         }
     }
 
-    // Model
+
     private SosGame game;
 
-    // UI controls
     private ComboBox<Integer> boardSizeBox;
     private RadioButton simpleModeBtn;
     private RadioButton generalModeBtn;
@@ -128,7 +126,6 @@ public class MainApp extends Application {
         int n = boardSizeBox.getValue();
         GameMode mode = simpleModeBtn.isSelected() ? GameMode.SIMPLE : GameMode.GENERAL;
 
-        // Build the correct game object
         if (mode == GameMode.SIMPLE) {
             game = new SimpleGame(n);
         } else {
@@ -166,7 +163,7 @@ public class MainApp extends Application {
 
         Player currentTurn = game.turn();
         PlayerType type =
-                currentTurn == Player.BLUE ? blueTypeBox.getValue() : redTypeBox.getValue();
+                (currentTurn == Player.BLUE) ? blueTypeBox.getValue() : redTypeBox.getValue();
 
         if (type == PlayerType.COMPUTER) {
             return;
@@ -218,7 +215,7 @@ public class MainApp extends Application {
             } else {
                 statusLabel.setText(
                         String.format("Game over: %s wins | Mode: %s | Blue: %s  Red: %s",
-                                w == Player.BLUE ? "blue" : "red",
+                                (w == Player.BLUE ? "blue" : "red"),
                                 modeStr, blueStr, redStr));
             }
         } else {
@@ -230,7 +227,6 @@ public class MainApp extends Application {
     }
 
 
-    /** Check whose turn it is; if it's a computer, schedule a delayed move. */
     private void maybeScheduleComputerTurn() {
         if (game == null || game.isOver()) return;
 
@@ -253,12 +249,15 @@ public class MainApp extends Application {
             updateBoardUI();
             updateStatusLabel();
 
+
             maybeScheduleComputerTurn();
         });
         pause.play();
     }
 
     private void makeComputerMove() {
+        if (game == null || game.isOver()) return;
+
         Board b = game.board();
         int n = b.size();
 
@@ -275,7 +274,23 @@ public class MainApp extends Application {
         int[] rc = empties.get(ThreadLocalRandom.current().nextInt(empties.size()));
         int r = rc[0], c = rc[1];
 
-        Letter L = ThreadLocalRandom.current().nextBoolean() ? Letter.S : Letter.O;
+        Player current = game.turn();
+        PlayerType blueType = blueTypeBox.getValue();
+        PlayerType redType  = redTypeBox.getValue();
+
+        boolean blueIsHuman = (blueType == PlayerType.HUMAN);
+        boolean redIsHuman  = (redType == PlayerType.HUMAN);
+
+        Letter L;
+
+        if (current == Player.BLUE && blueType == PlayerType.COMPUTER && redIsHuman) {
+            L = letterSBtn.isSelected() ? Letter.O : Letter.S;
+        } else if (current == Player.RED && redType == PlayerType.COMPUTER && blueIsHuman) {
+            L = letterSBtn.isSelected() ? Letter.O : Letter.S;
+        } else {
+            L = ThreadLocalRandom.current().nextBoolean() ? Letter.S : Letter.O;
+        }
+
         game.place(r, c, L);
     }
 
