@@ -9,7 +9,7 @@ public class Sprint4Tests {
 
     @Test
     void computerMove_placesValidLetterInEmptyCell() {
-        SosGame g = new GeneralGame(5);      // model only, UI not tested
+        SosGame g = new GeneralGame(5);
         g.newGame();
 
         int emptyCountBefore = countEmpty(g);
@@ -64,11 +64,11 @@ public class Sprint4Tests {
         SosGame g = new GeneralGame(3);
         g.newGame();
 
-        // Fill entire board with no SOS patterns
+
         for (int r = 0; r < 3; r++) {
             for (int c = 0; c < 3; c++) {
                 if (g.board().isEmpty(r, c)) {
-                    g.place(r, c, Letter.S);  // doesn't matter if they score
+                    g.place(r, c, Letter.S);
                 }
             }
         }
