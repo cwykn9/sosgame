@@ -1,193 +1,285 @@
 package cs449;
 
-import cs449.model.*;
+import cs449.model.Board;
+import cs449.model.GameMode;
+import cs449.model.GeneralGame;
+import cs449.model.Letter;
+import cs449.model.Player;
+import cs449.model.SimpleGame;
+import cs449.model.SosGame;
+import javafx.animation.PauseTransition;
 import javafx.application.Application;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import javafx.util.Duration;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class MainApp extends Application {
 
-    private final ToggleGroup modeGroup = new ToggleGroup();     // Simple / General
-    private final ToggleGroup letterGroup = new ToggleGroup();   // S / O
-    private final ComboBox<Integer> sizeBox = new ComboBox<>();  // board sizes
-    private final Label status = new Label();
-    private GridPane grid;
+    private enum PlayerType {
+        HUMAN, COMPUTER;
 
+        @Override
+        public String toString() {
+            // What appears in the ComboBox
+            return this == HUMAN ? "Human" : "Computer";
+        }
+    }
+
+    // Model
     private SosGame game;
-    private Button[][] cells;
+
+    // UI controls
+    private ComboBox<Integer> boardSizeBox;
+    private RadioButton simpleModeBtn;
+    private RadioButton generalModeBtn;
+
+    private ComboBox<PlayerType> blueTypeBox;
+    private ComboBox<PlayerType> redTypeBox;
+
+    private RadioButton letterSBtn;
+    private RadioButton letterOBtn;
+
+    private GridPane boardGrid;
+    private Button[][] cellButtons;
+
+    private Label statusLabel;
 
     @Override
     public void start(Stage stage) {
-        // ---------- Top controls ----------
-        sizeBox.getItems().addAll(3, 4, 5, 6, 7, 8, 9, 10);
-        sizeBox.getSelectionModel().select(Integer.valueOf(3));
+        boardSizeBox = new ComboBox<>();
+        for (int n = 3; n <= 10; n++) {
+            boardSizeBox.getItems().add(n);
+        }
+        boardSizeBox.setValue(3);
 
-        // Mode radios with enum userData (avoid fragile .getText() checks)
-        RadioButton simple = new RadioButton("Simple");
-        RadioButton general = new RadioButton("General");
-        simple.setToggleGroup(modeGroup);
-        general.setToggleGroup(modeGroup);
-        simple.setUserData(GameMode.SIMPLE);
-        general.setUserData(GameMode.GENERAL);
-        general.setSelected(true); // default if you want
+        Label boardLabel = new Label("Board:");
+        boardLabel.setLabelFor(boardSizeBox);
+
+        simpleModeBtn = new RadioButton("Simple");
+        generalModeBtn = new RadioButton("General");
+        ToggleGroup modeGroup = new ToggleGroup();
+        simpleModeBtn.setToggleGroup(modeGroup);
+        generalModeBtn.setToggleGroup(modeGroup);
+        simpleModeBtn.setSelected(true);
 
         Button newGameBtn = new Button("New Game");
         newGameBtn.setOnAction(e -> startNewGame());
 
-        // Letter radios
-        RadioButton sBtn = new RadioButton("S");
-        RadioButton oBtn = new RadioButton("O");
-        sBtn.setToggleGroup(letterGroup);
-        oBtn.setToggleGroup(letterGroup);
-        sBtn.setSelected(true);
-
-        HBox top = new HBox(12,
-                new Label("Board:"), sizeBox,
-                new Label("Mode:"), simple, general,
-                newGameBtn,
-                new Label("Letter:"), sBtn, oBtn
+        HBox topRow = new HBox(10,
+                boardLabel, boardSizeBox,
+                new Label("Mode:"), simpleModeBtn, generalModeBtn,
+                newGameBtn
         );
-        top.setPadding(new Insets(10));
+        topRow.setAlignment(Pos.CENTER_LEFT);
+        topRow.setPadding(new Insets(10));
 
-        // ---------- Board Grid ----------
-        grid = new GridPane();
-        grid.setHgap(4);
-        grid.setVgap(4);
-        grid.setPadding(new Insets(10));
+        blueTypeBox = new ComboBox<>();
+        blueTypeBox.getItems().addAll(PlayerType.HUMAN, PlayerType.COMPUTER);
+        blueTypeBox.setValue(PlayerType.HUMAN);
 
-        // ---------- Status line ----------
-        status.setPadding(new Insets(10));
+        redTypeBox = new ComboBox<>();
+        redTypeBox.getItems().addAll(PlayerType.HUMAN, PlayerType.COMPUTER);
+        redTypeBox.setValue(PlayerType.HUMAN);
 
-        // ---------- Layout ----------
-        VBox root = new VBox(top, grid, status);
-        Scene scene = new Scene(root);
-        stage.setTitle("SOS — Sprint 3");
+        letterSBtn = new RadioButton("S");
+        letterOBtn = new RadioButton("O");
+        ToggleGroup letterGroup = new ToggleGroup();
+        letterSBtn.setToggleGroup(letterGroup);
+        letterOBtn.setToggleGroup(letterGroup);
+        letterSBtn.setSelected(true);
+
+        HBox secondRow = new HBox(15,
+                new Label("Blue Player:"), blueTypeBox,
+                new Label("Red Player:"), redTypeBox,
+                new Label("Letter (Human):"), letterSBtn, letterOBtn
+        );
+        secondRow.setAlignment(Pos.CENTER_LEFT);
+        secondRow.setPadding(new Insets(0, 10, 10, 10));
+
+        boardGrid = new GridPane();
+        boardGrid.setHgap(5);
+        boardGrid.setVgap(5);
+        boardGrid.setPadding(new Insets(10));
+
+        statusLabel = new Label();
+        HBox bottomRow = new HBox(statusLabel);
+        bottomRow.setAlignment(Pos.CENTER_LEFT);
+        bottomRow.setPadding(new Insets(10));
+
+        VBox root = new VBox(5, topRow, secondRow, boardGrid, bottomRow);
+        Scene scene = new Scene(root, 700, 500);
+
+        stage.setTitle("SOS — Sprint 4");
         stage.setScene(scene);
         stage.show();
 
-        // ---------- Initialize game ----------
         startNewGame();
     }
 
-    /** Create a new game and rebuild board */
     private void startNewGame() {
-        int n = sizeBox.getValue() == null ? 3 : sizeBox.getValue();
-        GameMode selectedMode = getSelectedMode();
+        int n = boardSizeBox.getValue();
+        GameMode mode = simpleModeBtn.isSelected() ? GameMode.SIMPLE : GameMode.GENERAL;
 
-        // Construct correct subclass based on enum (no text comparisons)
-        game = (selectedMode == GameMode.GENERAL) ? new GeneralGame(n) : new SimpleGame(n);
+        // Build the correct game object
+        if (mode == GameMode.SIMPLE) {
+            game = new SimpleGame(n);
+        } else {
+            game = new GeneralGame(n);
+        }
 
-        buildBoardUI(n);
-        updateBoardFromModel();
-        updateStatus();
+        game.newGame();
+        rebuildBoardGrid(n);
+        updateBoardUI();
+        updateStatusLabel();
+
+        maybeScheduleComputerTurn();
     }
 
-    /** Build the visual board grid */
-    private void buildBoardUI(int n) {
-        grid.getChildren().clear();
-        cells = new Button[n][n];
+    private void rebuildBoardGrid(int n) {
+        boardGrid.getChildren().clear();
+        cellButtons = new Button[n][n];
 
         for (int r = 0; r < n; r++) {
             for (int c = 0; c < n; c++) {
-                Button b = new Button(" ");
-                b.setMinSize(44, 44);
-                final int rr = r, cc = c;
-
-                b.setOnAction(e -> handleMove(rr, cc, b));
-                cells[r][c] = b;
-                grid.add(b, c, r);
+                Button btn = new Button();
+                btn.setMinSize(50, 50);
+                btn.setMaxSize(50, 50);
+                int rr = r;
+                int cc = c;
+                btn.setOnAction(e -> handleCellClick(rr, cc));
+                cellButtons[r][c] = btn;
+                boardGrid.add(btn, c, r);
             }
         }
     }
 
-    /** Handle player move */
-    private void handleMove(int r, int c, Button b) {
-        if (game.isOver()) return;
-        Letter L = getSelectedLetter();
+    private void handleCellClick(int r, int c) {
+        if (game == null || game.isOver()) return;
 
-        if (game.place(r, c, L)) {
-            b.setText(L == Letter.S ? "S" : "O");
-            updateStatus();
-            if (game.isOver()) disableEmptyCells();
+        Player currentTurn = game.turn();
+        PlayerType type =
+                currentTurn == Player.BLUE ? blueTypeBox.getValue() : redTypeBox.getValue();
+
+        if (type == PlayerType.COMPUTER) {
+            return;
         }
+
+        Letter chosen = letterSBtn.isSelected() ? Letter.S : Letter.O;
+
+        boolean placed = game.place(r, c, chosen);
+        if (!placed) {
+            return;
+        }
+
+        updateBoardUI();
+        updateStatusLabel();
+
+        maybeScheduleComputerTurn();
     }
 
-    // ---------- Helpers ----------
-
-    private void updateBoardFromModel() {
-        int n = game.board().size();
+    private void updateBoardUI() {
+        Board b = game.board();
+        int n = b.size();
         for (int r = 0; r < n; r++) {
             for (int c = 0; c < n; c++) {
-                Letter L = game.board().get(r, c);
-                cells[r][c].setText(letterToText(L));
-                cells[r][c].setDisable(false);
+                Letter L = b.get(r, c);
+                String text = "";
+                if (L == Letter.S) text = "S";
+                else if (L == Letter.O) text = "O";
+                cellButtons[r][c].setText(text);
             }
         }
     }
 
-    private GameMode getSelectedMode() {
-        Toggle t = modeGroup.getSelectedToggle();
-        if (t != null && t.getUserData() instanceof GameMode gm) {
-            return gm;
+    private void updateStatusLabel() {
+        if (game == null) {
+            statusLabel.setText("");
+            return;
         }
-        // Fallback: default to SIMPLE if somehow nothing selected
-        return GameMode.SIMPLE;
-    }
 
-    private Letter getSelectedLetter() {
-        Toggle t = letterGroup.getSelectedToggle();
-        if (t instanceof RadioButton rb) {
-            return "O".equalsIgnoreCase(rb.getText()) ? Letter.O : Letter.S;
-        }
-        return Letter.S;
-    }
+        String modeStr = game.mode() == GameMode.SIMPLE ? "simple" : "general";
+        String blueStr = blueTypeBox.getValue().toString();
+        String redStr = redTypeBox.getValue().toString();
 
-    private String letterToText(Letter L) {
-        return switch (L) {
-            case S -> "S";
-            case O -> "O";
-            default -> " ";
-        };
-    }
-
-    private void disableEmptyCells() {
-        int n = game.board().size();
-        for (int r = 0; r < n; r++) {
-            for (int c = 0; c < n; c++) {
-                if (game.board().get(r, c) == Letter.EMPTY)
-                    cells[r][c].setDisable(true);
-            }
-        }
-    }
-
-    /** Update status bar text */
-    private void updateStatus() {
-        String modeStr = "Mode: " + game.mode().name().toLowerCase();
         if (game.isOver()) {
             Player w = game.winner();
-            String score = (game.mode() == GameMode.GENERAL)
-                    ? String.format(" | Blue: %d  Red: %d", game.blueScore(), game.redScore())
-                    : "";
             if (w == null) {
-                status.setText("Game over: Draw  |  " + modeStr + score);
+                statusLabel.setText(
+                        String.format("Game over: draw | Mode: %s | Blue: %s  Red: %s",
+                                modeStr, blueStr, redStr));
             } else {
-                status.setText("Game over: Winner = " + w.name().toLowerCase() + "  |  " + modeStr + score);
+                statusLabel.setText(
+                        String.format("Game over: %s wins | Mode: %s | Blue: %s  Red: %s",
+                                w == Player.BLUE ? "blue" : "red",
+                                modeStr, blueStr, redStr));
             }
         } else {
-            String score = (game.mode() == GameMode.GENERAL)
-                    ? String.format(" | Blue: %d  Red: %d", game.blueScore(), game.redScore())
-                    : "";
-            status.setText("Current turn: " + game.turn().name().toLowerCase() + "  |  " + modeStr + score);
+            String turnStr = game.turn() == Player.BLUE ? "blue" : "red";
+            statusLabel.setText(
+                    String.format("Current turn: %s  |  Mode: %s  |  Blue: %s  Red: %s",
+                            turnStr, modeStr, blueStr, redStr));
         }
+    }
+
+
+    /** Check whose turn it is; if it's a computer, schedule a delayed move. */
+    private void maybeScheduleComputerTurn() {
+        if (game == null || game.isOver()) return;
+
+        Player turn = game.turn();
+        PlayerType type =
+                (turn == Player.BLUE) ? blueTypeBox.getValue() : redTypeBox.getValue();
+
+        if (type != PlayerType.COMPUTER) {
+            return;
+        }
+
+        PauseTransition pause = new PauseTransition(Duration.millis(400));
+        pause.setOnFinished(e -> {
+            if (game.isOver()) {
+                updateStatusLabel();
+                return;
+            }
+
+            makeComputerMove();
+            updateBoardUI();
+            updateStatusLabel();
+
+            maybeScheduleComputerTurn();
+        });
+        pause.play();
+    }
+
+    private void makeComputerMove() {
+        Board b = game.board();
+        int n = b.size();
+
+        List<int[]> empties = new ArrayList<>();
+        for (int r = 0; r < n; r++) {
+            for (int c = 0; c < n; c++) {
+                if (b.isEmpty(r, c)) {
+                    empties.add(new int[]{r, c});
+                }
+            }
+        }
+        if (empties.isEmpty()) return;
+
+        int[] rc = empties.get(ThreadLocalRandom.current().nextInt(empties.size()));
+        int r = rc[0], c = rc[1];
+
+        Letter L = ThreadLocalRandom.current().nextBoolean() ? Letter.S : Letter.O;
+        game.place(r, c, L);
     }
 
     public static void main(String[] args) {
         launch(args);
     }
 }
-

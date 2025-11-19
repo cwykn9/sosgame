@@ -56,7 +56,6 @@ public abstract class SosGame {
     protected void toggleTurn() { turn = (turn == Player.BLUE ? Player.RED : Player.BLUE); }
     protected void setOver(boolean v) { over = v; }
     protected void setWinner(Player p) { winner = p; }
-    /** Using null to represent draw; method kept for clarity/extensibility. */
     protected void setDrawIfNoWinner() { if (winner == null) winner = null; }
     protected void incBlue(int by) { blue += by; }
     protected void incRed(int by) { red += by; }
