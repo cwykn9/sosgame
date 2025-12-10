@@ -7,6 +7,9 @@ import cs449.model.Letter;
 import cs449.model.Player;
 import cs449.model.SimpleGame;
 import cs449.model.SosGame;
+import cs449.model.Participant;
+import cs449.model.HumanParticipant;
+import cs449.model.ComputerParticipant;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
 import javafx.geometry.Insets;
@@ -17,12 +20,13 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class MainApp extends Application {
 
+    /** What the user selects in the combo box (Human vs Computer). */
     private enum PlayerType {
         HUMAN, COMPUTER;
 
@@ -32,9 +36,12 @@ public class MainApp extends Application {
         }
     }
 
-
+    // ----- Model -----
     private SosGame game;
+    private Participant blueParticipant;
+    private Participant redParticipant;
 
+    // ----- UI controls -----
     private ComboBox<Integer> boardSizeBox;
     private RadioButton simpleModeBtn;
     private RadioButton generalModeBtn;
@@ -49,18 +56,29 @@ public class MainApp extends Application {
     private Button[][] cellButtons;
 
     private Label statusLabel;
+    private Button recordButton;
+    private Button replayButton;
+
+    // ----- Recording / replay -----
+    private boolean recording = false;
+    private PrintWriter recordWriter;
+
+    private boolean replaying = false;
+    private List<Move> replayMoves;
+    private int replayIndex = 0;
 
     @Override
     public void start(Stage stage) {
+        // Board size selector
         boardSizeBox = new ComboBox<>();
         for (int n = 3; n <= 10; n++) {
             boardSizeBox.getItems().add(n);
         }
         boardSizeBox.setValue(3);
-
         Label boardLabel = new Label("Board:");
         boardLabel.setLabelFor(boardSizeBox);
 
+        // Mode selector
         simpleModeBtn = new RadioButton("Simple");
         generalModeBtn = new RadioButton("General");
         ToggleGroup modeGroup = new ToggleGroup();
@@ -69,7 +87,10 @@ public class MainApp extends Application {
         simpleModeBtn.setSelected(true);
 
         Button newGameBtn = new Button("New Game");
-        newGameBtn.setOnAction(e -> startNewGame());
+        newGameBtn.setOnAction(e -> {
+            replaying = false;
+            startNewGame();
+        });
 
         HBox topRow = new HBox(10,
                 boardLabel, boardSizeBox,
@@ -79,6 +100,7 @@ public class MainApp extends Application {
         topRow.setAlignment(Pos.CENTER_LEFT);
         topRow.setPadding(new Insets(10));
 
+        // Player type selectors
         blueTypeBox = new ComboBox<>();
         blueTypeBox.getItems().addAll(PlayerType.HUMAN, PlayerType.COMPUTER);
         blueTypeBox.setValue(PlayerType.HUMAN);
@@ -87,6 +109,7 @@ public class MainApp extends Application {
         redTypeBox.getItems().addAll(PlayerType.HUMAN, PlayerType.COMPUTER);
         redTypeBox.setValue(PlayerType.HUMAN);
 
+        // Human letter choice
         letterSBtn = new RadioButton("S");
         letterOBtn = new RadioButton("O");
         ToggleGroup letterGroup = new ToggleGroup();
@@ -102,42 +125,65 @@ public class MainApp extends Application {
         secondRow.setAlignment(Pos.CENTER_LEFT);
         secondRow.setPadding(new Insets(0, 10, 10, 10));
 
+        // Board grid
         boardGrid = new GridPane();
         boardGrid.setHgap(5);
         boardGrid.setVgap(5);
         boardGrid.setPadding(new Insets(10));
 
+        // Status + Record/Replay buttons
         statusLabel = new Label();
-        HBox bottomRow = new HBox(statusLabel);
+
+        recordButton = new Button("Record Game");
+        recordButton.setOnAction(e -> onRecordClicked());
+
+        replayButton = new Button("Replay Game");
+        replayButton.setOnAction(e -> onReplayClicked());
+
+        HBox bottomRow = new HBox(10, statusLabel, recordButton, replayButton);
         bottomRow.setAlignment(Pos.CENTER_LEFT);
         bottomRow.setPadding(new Insets(10));
 
         VBox root = new VBox(5, topRow, secondRow, boardGrid, bottomRow);
-        Scene scene = new Scene(root, 700, 500);
+        Scene scene = new Scene(root, 750, 520);
 
-        stage.setTitle("SOS — Sprint 4");
+        stage.setTitle("SOS — Sprint 5");
         stage.setScene(scene);
         stage.show();
 
         startNewGame();
     }
 
+    // ----- Game setup -----
     private void startNewGame() {
         int n = boardSizeBox.getValue();
         GameMode mode = simpleModeBtn.isSelected() ? GameMode.SIMPLE : GameMode.GENERAL;
 
+        // Create the right kind of game
         if (mode == GameMode.SIMPLE) {
             game = new SimpleGame(n);
         } else {
             game = new GeneralGame(n);
         }
-
         game.newGame();
+
+        // Build participants from combo box selections
+        blueParticipant = (blueTypeBox.getValue() == PlayerType.HUMAN)
+                ? new HumanParticipant(Player.BLUE)
+                : new ComputerParticipant(Player.BLUE);
+
+        redParticipant = (redTypeBox.getValue() == PlayerType.HUMAN)
+                ? new HumanParticipant(Player.RED)
+                : new ComputerParticipant(Player.RED);
+
         rebuildBoardGrid(n);
         updateBoardUI();
         updateStatusLabel();
 
-        maybeScheduleComputerTurn();
+        // Only auto-move computers in normal play, not during replay
+        if (!replaying) {
+            maybeScheduleComputerTurn();
+        }
     }
 
     private void rebuildBoardGrid(int n) {
@@ -149,8 +195,8 @@ public class MainApp extends Application {
                 Button btn = new Button();
                 btn.setMinSize(50, 50);
                 btn.setMaxSize(50, 50);
-                int rr = r;
-                int cc = c;
+                final int rr = r;
+                final int cc = c;
                 btn.setOnAction(e -> handleCellClick(rr, cc));
                 cellButtons[r][c] = btn;
                 boardGrid.add(btn, c, r);
@@ -158,14 +204,15 @@ public class MainApp extends Application {
         }
     }
 
+    // ----- Human move -----
     private void handleCellClick(int r, int c) {
-        if (game == null || game.isOver()) return;
+        if (game == null || game.isOver() || replaying) return;
 
-        Player currentTurn = game.turn();
-        PlayerType type =
-                (currentTurn == Player.BLUE) ? blueTypeBox.getValue() : redTypeBox.getValue();
+        Participant current =
+                (game.turn() == Player.BLUE) ? blueParticipant : redParticipant;
 
-        if (type == PlayerType.COMPUTER) {
+        // Ignore clicks when it's a computer's turn
+        if (current.isComputer()) {
             return;
         }
 
@@ -173,16 +220,23 @@ public class MainApp extends Application {
 
         boolean placed = game.place(r, c, chosen);
         if (!placed) {
-            return;
+            return; // invalid move
         }
+
+        // Record human move if we're recording
+        recordMove(current.color(), chosen, r, c);
 
         updateBoardUI();
         updateStatusLabel();
 
+        // After human move, see if computer needs to play
         maybeScheduleComputerTurn();
     }
 
+    // ----- UI updates -----
     private void updateBoardUI() {
+        if (game == null) return;
+
         Board b = game.board();
         int n = b.size();
         for (int r = 0; r < n; r++) {
@@ -202,9 +256,9 @@ public class MainApp extends Application {
             return;
         }
 
-        String modeStr = game.mode() == GameMode.SIMPLE ? "simple" : "general";
-        String blueStr = blueTypeBox.getValue().toString();
-        String redStr = redTypeBox.getValue().toString();
+        String modeStr = (game.mode() == GameMode.SIMPLE) ? "simple" : "general";
+        String blueStr = blueParticipant.isComputer() ? "Computer" : "Human";
+        String redStr = redParticipant.isComputer() ? "Computer" : "Human";
 
         if (game.isOver()) {
             Player w = game.winner();
@@ -218,8 +272,12 @@ public class MainApp extends Application {
                                 (w == Player.BLUE ? "blue" : "red"),
                                 modeStr, blueStr, redStr));
             }
+            // Stop recording at end of game
+            if (recording) {
+                stopRecording();
+            }
         } else {
-            String turnStr = game.turn() == Player.BLUE ? "blue" : "red";
+            String turnStr = (game.turn() == Player.BLUE) ? "blue" : "red";
             statusLabel.setText(
                     String.format("Current turn: %s  |  Mode: %s  |  Blue: %s  Red: %s",
                             turnStr, modeStr, blueStr, redStr));
@@ -227,71 +285,209 @@ public class MainApp extends Application {
     }
 
 
+    private void onRecordClicked() {
+        if (replaying) return;
+
+        if (!recording) {
+            // Start recording
+            try {
+                recordWriter = new PrintWriter(new FileWriter("recording.txt", false));
+                int n = boardSizeBox.getValue();
+                String modeStr = simpleModeBtn.isSelected() ? "SIMPLE" : "GENERAL";
+                recordWriter.printf("SIZE %d%n", n);
+                recordWriter.printf("MODE %s%n", modeStr);
+                recordWriter.flush();
+                recording = true;
+                recordButton.setText("Recording...");
+                statusLabel.setText("Recording game to recording.txt");
+            } catch (IOException ex) {
+                recording = false;
+                recordWriter = null;
+                statusLabel.setText("Error: cannot start recording.");
+            }
+        } else {
+            // Stop recording
+            stopRecording();
+        }
+    }
+
+    private void stopRecording() {
+        if (recordWriter != null) {
+            recordWriter.flush();
+            recordWriter.close();
+        }
+        recordWriter = null;
+        recording = false;
+        recordButton.setText("Record Game");
+    }
+
+    private void recordMove(Player player, Letter letter, int row, int col) {
+        if (!recording || recordWriter == null) return;
+        String playerStr = (player == Player.BLUE) ? "BLUE" : "RED";
+        String letterStr = (letter == Letter.S) ? "S" : "O";
+        recordWriter.printf("MOVE %s %s %d %d%n", playerStr, letterStr, row, col);
+        recordWriter.flush();
+    }
+
     private void maybeScheduleComputerTurn() {
-        if (game == null || game.isOver()) return;
+        if (game == null || game.isOver() || replaying) return;
 
-        Player turn = game.turn();
-        PlayerType type =
-                (turn == Player.BLUE) ? blueTypeBox.getValue() : redTypeBox.getValue();
+        Participant current =
+                (game.turn() == Player.BLUE) ? blueParticipant : redParticipant;
 
-        if (type != PlayerType.COMPUTER) {
-            return;
+        if (!current.isComputer()) {
+            return; // next player is human
         }
 
         PauseTransition pause = new PauseTransition(Duration.millis(400));
         pause.setOnFinished(e -> {
-            if (game.isOver()) {
+            if (game.isOver() || replaying) {
                 updateStatusLabel();
                 return;
             }
 
-            makeComputerMove();
+            // Snapshot board BEFORE move
+            Letter[][] before = copyBoard(game.board());
+
+            // Computer makes move (inside model)
+            current.makeMove(game);
+
+            // Detect changed cell
+            Board after = game.board();
+            int n = after.size();
+            for (int r = 0; r < n; r++) {
+                for (int c = 0; c < n; c++) {
+                    if (before[r][c] != after.get(r, c)) {
+                        Letter L = after.get(r, c);
+                        if (L == Letter.S || L == Letter.O) {
+                            recordMove(current.color(), L, r, c);
+                        }
+                    }
+                }
+            }
+
             updateBoardUI();
             updateStatusLabel();
-
 
             maybeScheduleComputerTurn();
         });
         pause.play();
     }
 
-    private void makeComputerMove() {
-        if (game == null || game.isOver()) return;
-
-        Board b = game.board();
+    private Letter[][] copyBoard(Board b) {
         int n = b.size();
-
-        List<int[]> empties = new ArrayList<>();
+        Letter[][] arr = new Letter[n][n];
         for (int r = 0; r < n; r++) {
             for (int c = 0; c < n; c++) {
-                if (b.isEmpty(r, c)) {
-                    empties.add(new int[]{r, c});
-                }
+                arr[r][c] = b.get(r, c);
             }
         }
-        if (empties.isEmpty()) return;
+        return arr;
+    }
 
-        int[] rc = empties.get(ThreadLocalRandom.current().nextInt(empties.size()));
-        int r = rc[0], c = rc[1];
+    private void onReplayClicked() {
+        // Stop any recording
+        if (recording) {
+            stopRecording();
+        }
+        if (replaying) return;
 
-        Player current = game.turn();
-        PlayerType blueType = blueTypeBox.getValue();
-        PlayerType redType  = redTypeBox.getValue();
-
-        boolean blueIsHuman = (blueType == PlayerType.HUMAN);
-        boolean redIsHuman  = (redType == PlayerType.HUMAN);
-
-        Letter L;
-
-        if (current == Player.BLUE && blueType == PlayerType.COMPUTER && redIsHuman) {
-            L = letterSBtn.isSelected() ? Letter.O : Letter.S;
-        } else if (current == Player.RED && redType == PlayerType.COMPUTER && blueIsHuman) {
-            L = letterSBtn.isSelected() ? Letter.O : Letter.S;
-        } else {
-            L = ThreadLocalRandom.current().nextBoolean() ? Letter.S : Letter.O;
+        File file = new File("recording.txt");
+        if (!file.exists()) {
+            statusLabel.setText("No recording.txt found to replay.");
+            return;
         }
 
-        game.place(r, c, L);
+        int size = 3;
+        GameMode mode = GameMode.SIMPLE;
+        List<Move> moves = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                String[] parts = line.split("\\s+");
+                if (parts[0].equals("SIZE") && parts.length >= 2) {
+                    size = Integer.parseInt(parts[1]);
+                } else if (parts[0].equals("MODE") && parts.length >= 2) {
+                    mode = parts[1].equalsIgnoreCase("GENERAL")
+                            ? GameMode.GENERAL
+                            : GameMode.SIMPLE;
+                } else if (parts[0].equals("MOVE") && parts.length >= 5) {
+                    String letterStr = parts[2];
+                    int row = Integer.parseInt(parts[3]);
+                    int col = Integer.parseInt(parts[4]);
+                    Letter L = letterStr.equalsIgnoreCase("O") ? Letter.O : Letter.S;
+                    moves.add(new Move(L, row, col));
+                }
+            }
+        } catch (IOException ex) {
+            statusLabel.setText("Error reading recording.txt");
+            return;
+        }
+
+        if (moves.isEmpty()) {
+            statusLabel.setText("Recording has no moves.");
+            return;
+        }
+
+        replayMoves = moves;
+        replayIndex = 0;
+        replaying = true;
+
+        // Configure UI to match recording
+        boardSizeBox.setValue(size);
+        if (mode == GameMode.SIMPLE) {
+            simpleModeBtn.setSelected(true);
+        } else {
+            generalModeBtn.setSelected(true);
+        }
+
+        // Start fresh game matching recording settings
+        startNewGame();
+        statusLabel.setText("Replaying recording.txt");
+        playNextReplayMove();
+    }
+
+    private void playNextReplayMove() {
+        if (!replaying || replayMoves == null) {
+            replaying = false;
+            return;
+        }
+        if (replayIndex >= replayMoves.size()) {
+            replaying = false;
+            updateStatusLabel();
+            return;
+        }
+
+        Move m = replayMoves.get(replayIndex++);
+        PauseTransition pause = new PauseTransition(Duration.millis(400));
+        pause.setOnFinished(e -> {
+            if (game == null || game.isOver()) {
+                replaying = false;
+                updateStatusLabel();
+                return;
+            }
+            game.place(m.row, m.col, m.letter);
+            updateBoardUI();
+            updateStatusLabel();
+            playNextReplayMove();
+        });
+        pause.play();
+    }
+
+    // Simple record type for stored moves
+    private static class Move {
+        final Letter letter;
+        final int row;
+        final int col;
+
+        Move(Letter letter, int row, int col) {
+            this.letter = letter;
+            this.row = row;
+            this.col = col;
+        }
     }
 
     public static void main(String[] args) {
